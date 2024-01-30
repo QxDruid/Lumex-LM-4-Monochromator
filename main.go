@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -19,6 +20,8 @@ var mode = &serial.Mode{
 	DataBits: 8,
 	StopBits: serial.OneStopBit,
 }
+
+var abort bool = false
 
 func go_to(wavelength int) int {
 
@@ -99,19 +102,34 @@ func input_wl_validator(input string) int {
 	return 1
 }
 
+func input_wl_to_int(input string) int {
+	err_ := input_wl_validator(input)
+	if err_ == 0 {
+
+		return 0
+	}
+	wavelength_float, err := strconv.ParseFloat(input, 8)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	wavelength_float *= 10
+	return int(wavelength_float)
+}
+
 func main() {
 	a := app.New()
 	window := a.NewWindow("test")
-	window.Resize(fyne.NewSize(320, 450))
+	window.Resize(fyne.NewSize(320, 500))
 
 	label_status := widget.NewLabel("Is OK!")
-	label_status.Move(fyne.NewPos(40, 400))
+	label_status.Move(fyne.NewPos(180, 460))
 	label_status.Resize(fyne.NewSize(140, 40))
 
 	label_1 := widget.NewLabel("Current WL (nm):")
 	label_1.Move(fyne.NewPos(60, 20))
 	label_1.Resize(fyne.NewSize(140, 40))
-	label_current_wl := widget.NewLabel("400")
+	label_current_wl := widget.NewLabel("400.0")
 	label_current_wl.Move(fyne.NewPos(180, 20))
 	label_current_wl.Resize(fyne.NewSize(100, 40))
 
@@ -120,25 +138,21 @@ func main() {
 	label_go_wl.Resize(fyne.NewSize(100, 40))
 
 	entry_go_wl := widget.NewEntry()
+	entry_go_wl.Text = "400.0"
 	entry_go_wl.Move(fyne.NewPos(160, 60))
 	entry_go_wl.Resize(fyne.NewSize(100, 40))
 
 	btn_go_to_wl := widget.NewButton("Go", func() {
 		data := entry_go_wl.Text
-		err_ := input_wl_validator(data)
-		if err_ == 0 {
+		wavelength_to_go := input_wl_to_int(data)
+		if wavelength_to_go == 0 {
+
 			label_status.SetText("False Wavelength")
 			return
 		}
-		wavelength_float, err := strconv.ParseFloat(data, 8)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		wavelength_float *= 10
-		wavelength_to_go := int(wavelength_float)
 		current_wl := convert_state_to_wavelength(read_state())
 		if wavelength_to_go == current_wl {
+			label_status.SetText("Is OK!")
 			return
 		}
 
@@ -155,7 +169,7 @@ func main() {
 			fmt.Println("compare", current_wl, wavelength_to_go)
 			label_current_wl.SetText(current_wl_str)
 		}
-		label_status.SetText("Is Ok")
+		label_status.SetText("Is OK!")
 
 	})
 	btn_go_to_wl.Move(fyne.NewPos(40, 120))
@@ -175,6 +189,7 @@ func main() {
 	label_go_from_wl.Resize(fyne.NewSize(60, 20))
 
 	entry_go_from_wl := widget.NewEntry()
+	entry_go_from_wl.Text = "400.0"
 	entry_go_from_wl.Move(fyne.NewPos(160, 180))
 	entry_go_from_wl.Resize(fyne.NewSize(100, 40))
 
@@ -183,42 +198,122 @@ func main() {
 	label_go_to_wl.Resize(fyne.NewSize(60, 20))
 
 	entry_go_to_wl := widget.NewEntry()
+	entry_go_to_wl.Text = "400.0"
 	entry_go_to_wl.Move(fyne.NewPos(160, 240))
 	entry_go_to_wl.Resize(fyne.NewSize(100, 40))
 
-	btn_go_from_to := widget.NewButton("Go", func() {
-		data_from := entry_go_from_wl.Text
-		err_ := input_wl_validator(data_from)
-		if err_ == 0 {
-			label_status.SetText("False Wavelength From Go")
-			return
-		}
-
-		data_to := entry_go_to_wl.Text
-		err_ = input_wl_validator(data_to)
-		if err_ == 0 {
-			label_status.SetText("False Wavelength To Go")
-			return
-		}
-		label_status.SetText("In Process")
-
-		//go_from_to(from_int, to_int)
-		label_status.SetText("Is Ok")
-	})
-
-	label_delay := widget.NewLabel("Step Delay (s)")
+	label_delay := widget.NewLabel("Step Delay (ms)")
 	label_delay.Move(fyne.NewPos(40, 300))
 	label_delay.Resize(fyne.NewSize(60, 20))
 
 	entry_delay := widget.NewEntry()
+	entry_delay.Text = "100"
 	entry_delay.Move(fyne.NewPos(160, 300))
 	entry_delay.Resize(fyne.NewSize(100, 40))
 
-	btn_go_from_to.Move(fyne.NewPos(40, 360))
+	label_step := widget.NewLabel("Step (nm)")
+	label_step.Move(fyne.NewPos(40, 360))
+	label_step.Resize(fyne.NewSize(60, 20))
+
+	select_step := widget.NewSelect(
+		[]string{
+			"10",
+			"1",
+			"0.5",
+			"0.1",
+		},
+		func(s string) {
+
+		},
+	)
+	select_step.PlaceHolder = "0.1"
+	select_step.Move(fyne.NewPos(160, 360))
+	select_step.Resize(fyne.NewSize(100, 40))
+
+	btn_go_from_to := widget.NewButton("Go", func() {
+
+		// Read and parse forms
+
+		// From wavelength value
+		data_from := input_wl_to_int(entry_go_from_wl.Text)
+		if data_from == 0 {
+			label_status.SetText("False From WL ")
+			return
+		}
+
+		// To wavelength value
+		data_to := input_wl_to_int(entry_go_to_wl.Text)
+		if data_to == 0 {
+			label_status.SetText("False To WL ")
+			return
+		}
+		// delay ms value
+		data_delay := entry_delay.Text
+		delay_ms_int, err := strconv.ParseInt(data_delay, 10, 16)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("delay_ms", delay_ms_int)
+
+		// Wavelength Step value
+		data_step := select_step.Selected
+		data_step_float, err := strconv.ParseFloat(data_step, 8)
+		if err != nil {
+			log.Fatal(err)
+		}
+		data_step_int := int(data_step_float * 10)
+		fmt.Println("Step", data_step_int)
+
+		label_status.SetText("Go to Start")
+
+		// Go to FROM position
+		go_to(data_from)
+		current_wl := convert_state_to_wavelength(read_state())
+		for current_wl != data_from {
+			current_wl = convert_state_to_wavelength(read_state())
+			if current_wl == 0 {
+				continue
+			}
+			current_wl_str := strconv.Itoa(current_wl)
+			current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
+			label_current_wl.SetText(current_wl_str)
+		}
+		label_status.SetText("Ready to start!")
+		time.Sleep(1000 * time.Millisecond)
+		label_status.SetText("In Process!")
+
+		// Reverse step
+		if data_from > data_to {
+			data_step_int *= -1
+		}
+
+		// Go to end position with some step
+		var next_step int = data_from
+		for next_step != data_to {
+			current_wl = convert_state_to_wavelength(read_state())
+
+			// Если прибор не успевает за темпом ждем
+			for current_wl != next_step {
+				current_wl = convert_state_to_wavelength(read_state())
+				time.Sleep(10 * time.Millisecond)
+				label_status.SetText("Too Fast")
+			}
+
+			fmt.Println(current_wl, next_step)
+			next_step += data_step_int
+			go_to(next_step)
+			time.Sleep(time.Duration(delay_ms_int) * time.Millisecond)
+		}
+
+		label_status.SetText("Is OK!")
+
+	})
+
+	btn_go_from_to.Move(fyne.NewPos(40, 420))
 	btn_go_from_to.Resize(fyne.NewSize(240, 40))
 
 	window_content := container.NewWithoutLayout(label_1, label_current_wl, label_go_wl, entry_go_wl, btn_go_to_wl, btn_read_state, label_go_from_wl,
-		entry_go_from_wl, label_go_to_wl, entry_go_to_wl, btn_go_from_to, label_delay, entry_delay, label_status)
+		entry_go_from_wl, label_go_to_wl, entry_go_to_wl, btn_go_from_to, label_delay, entry_delay, label_status, label_step, select_step)
 	window.SetContent(window_content)
 	window.ShowAndRun()
 }
