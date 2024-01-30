@@ -21,7 +21,7 @@ var mode = &serial.Mode{
 	StopBits: serial.OneStopBit,
 }
 
-var abort bool = false
+var COM_PORT string = ""
 
 func go_to(wavelength int) int {
 
@@ -29,7 +29,7 @@ func go_to(wavelength int) int {
 	hexString = hexString[2:4] + hexString[0:2]
 	command := "4C" + hexString + "03\r"
 
-	port, err := serial.Open("/dev/ttyUSB0", mode)
+	port, err := serial.Open(COM_PORT, mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func go_to(wavelength int) int {
 }
 
 func read_state() string {
-	port, err := serial.Open("/dev/ttyUSB0", mode)
+	port, err := serial.Open(COM_PORT, mode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -74,15 +74,13 @@ func read_state() string {
 
 func convert_state_to_wavelength(state string) int {
 	state_split := strings.Fields(state)
-	//fmt.Println(state_split)
 	if len(state_split) < 3 {
 		return 0
 	}
 	wavelength := state_split[2] + state_split[1]
-	//fmt.Println(wavelength)
 	wavelength_int, err := strconv.ParseInt(wavelength, 16, 32)
 	if err != nil {
-		fmt.Println("wavelength_int_1")
+		return 0
 	}
 
 	return int(wavelength_int)
@@ -120,15 +118,40 @@ func input_wl_to_int(input string) int {
 func main() {
 	a := app.New()
 	window := a.NewWindow("test")
-	window.Resize(fyne.NewSize(320, 500))
-
+	window.Resize(fyne.NewSize(320, 520))
 	label_status := widget.NewLabel("Is OK!")
 	label_status.Move(fyne.NewPos(180, 460))
 	label_status.Resize(fyne.NewSize(140, 40))
 
+	// Get avaliable COM
+	menu_com := fyne.NewMenu("COM Port")
+	ports, err := serial.GetPortsList()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(ports) == 0 {
+		label_status.SetText("No serial found!")
+	} else {
+		for _, port := range ports {
+			actions_item := fyne.NewMenuItem(port, func() {
+				COM_PORT = port
+				text := fmt.Sprintf("%v", COM_PORT)
+				if err != nil {
+					log.Fatal(err)
+				}
+				label_status.SetText(text)
+			})
+			menu_com.Items = append(menu_com.Items, actions_item)
+		}
+	}
+
+	main_menu := fyne.NewMainMenu(menu_com)
+	window.SetMainMenu(main_menu)
+
 	label_1 := widget.NewLabel("Current WL (nm):")
 	label_1.Move(fyne.NewPos(60, 20))
 	label_1.Resize(fyne.NewSize(140, 40))
+
 	label_current_wl := widget.NewLabel("400.0")
 	label_current_wl.Move(fyne.NewPos(180, 20))
 	label_current_wl.Resize(fyne.NewSize(100, 40))
@@ -143,6 +166,11 @@ func main() {
 	entry_go_wl.Resize(fyne.NewSize(100, 40))
 
 	btn_go_to_wl := widget.NewButton("Go", func() {
+		if COM_PORT == "" {
+			label_status.SetText("SELECT COM")
+			return
+		}
+
 		data := entry_go_wl.Text
 		wavelength_to_go := input_wl_to_int(data)
 		if wavelength_to_go == 0 {
@@ -150,7 +178,11 @@ func main() {
 			label_status.SetText("False Wavelength")
 			return
 		}
-		current_wl := convert_state_to_wavelength(read_state())
+		var current_wl int
+		for current_wl == 0 {
+
+			current_wl = convert_state_to_wavelength(read_state())
+		}
 		if wavelength_to_go == current_wl {
 			label_status.SetText("Is OK!")
 			return
@@ -166,7 +198,7 @@ func main() {
 			}
 			current_wl_str := strconv.Itoa(current_wl)
 			current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
-			fmt.Println("compare", current_wl, wavelength_to_go)
+
 			label_current_wl.SetText(current_wl_str)
 		}
 		label_status.SetText("Is OK!")
@@ -176,6 +208,11 @@ func main() {
 	btn_go_to_wl.Resize(fyne.NewSize(100, 40))
 
 	btn_read_state := widget.NewButton("Get", func() {
+		if COM_PORT == "" {
+			label_status.SetText("SELECT COM")
+			return
+		}
+
 		data := convert_state_to_wavelength(read_state())
 		s2 := strconv.Itoa(data)
 		s2 = s2[:3] + string('.') + string(s2[3])
@@ -227,13 +264,20 @@ func main() {
 		},
 	)
 	select_step.PlaceHolder = "0.1"
+	select_step.Selected = "0.1"
 	select_step.Move(fyne.NewPos(160, 360))
 	select_step.Resize(fyne.NewSize(100, 40))
 
 	btn_go_from_to := widget.NewButton("Go", func() {
 
-		// Read and parse forms
+		var current_wl int = 0
 
+		if COM_PORT == "" {
+			label_status.SetText("SELECT COM")
+			return
+		}
+
+		// Read and parse forms
 		// From wavelength value
 		data_from := input_wl_to_int(entry_go_from_wl.Text)
 		if data_from == 0 {
@@ -253,7 +297,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("delay_ms", delay_ms_int)
 
 		// Wavelength Step value
 		data_step := select_step.Selected
@@ -262,13 +305,12 @@ func main() {
 			log.Fatal(err)
 		}
 		data_step_int := int(data_step_float * 10)
-		fmt.Println("Step", data_step_int)
 
 		label_status.SetText("Go to Start")
 
 		// Go to FROM position
 		go_to(data_from)
-		current_wl := convert_state_to_wavelength(read_state())
+		current_wl = convert_state_to_wavelength(read_state())
 		for current_wl != data_from {
 			current_wl = convert_state_to_wavelength(read_state())
 			if current_wl == 0 {
@@ -278,8 +320,7 @@ func main() {
 			current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
 			label_current_wl.SetText(current_wl_str)
 		}
-		label_status.SetText("Ready to start!")
-		time.Sleep(1000 * time.Millisecond)
+
 		label_status.SetText("In Process!")
 
 		// Reverse step
@@ -290,21 +331,38 @@ func main() {
 		// Go to end position with some step
 		var next_step int = data_from
 		for next_step != data_to {
-			current_wl = convert_state_to_wavelength(read_state())
-
-			// Если прибор не успевает за темпом ждем
-			for current_wl != next_step {
+			// Читаем текущую длину волны
+			for current_wl == 0 {
 				current_wl = convert_state_to_wavelength(read_state())
-				time.Sleep(10 * time.Millisecond)
-				label_status.SetText("Too Fast")
 			}
+			current_wl_str := strconv.Itoa(current_wl)
+			current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
 
-			fmt.Println(current_wl, next_step)
+			label_current_wl.SetText(current_wl_str)
+
+			// Стоим на текущей длине волны нудное время
+			time.Sleep(time.Duration(delay_ms_int) * time.Millisecond)
+
+			// Едем на следующую длину волны
 			next_step += data_step_int
 			go_to(next_step)
-			time.Sleep(time.Duration(delay_ms_int) * time.Millisecond)
-		}
 
+			// ждем пока доедем до длины волны шага
+			for current_wl != next_step {
+				current_wl = convert_state_to_wavelength(read_state())
+				for current_wl == 0 {
+					current_wl = convert_state_to_wavelength(read_state())
+				}
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+		for current_wl == 0 {
+
+			current_wl = convert_state_to_wavelength(read_state())
+		}
+		current_wl_str := strconv.Itoa(current_wl)
+		current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
+		label_current_wl.SetText(current_wl_str)
 		label_status.SetText("Is OK!")
 
 	})
