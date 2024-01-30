@@ -13,6 +13,7 @@ def get_status():
         time.sleep(0.1)
         
         responce = COM_port.read_all()
+        print(responce)
         return responce
 
 # get current wavelength from raw status string
