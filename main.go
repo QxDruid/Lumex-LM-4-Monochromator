@@ -69,19 +69,20 @@ func read_state() string {
 	return string(responce)
 }
 
-func convert_state_to_wavelength(state string) string {
+func convert_state_to_wavelength(state string) int {
 	state_split := strings.Fields(state)
-	wavelength := state_split[2] + state_split[1]
-	wavelength_int, err := strconv.ParseInt(wavelength, 16, 32)
-	wavelength_int_1 := wavelength_int / 10
-	wavelength_int_2 := wavelength_int % wavelength_int_1
-	if err != nil {
-		panic(err)
+	//fmt.Println(state_split)
+	if len(state_split) < 3 {
+		return 0
 	}
-	fmt.Print(wavelength_int_1)
-	fmt.Print(wavelength_int_2)
-	wavelength_str := fmt.Sprintf("%d.%d", wavelength_int_1, wavelength_int_2)
-	return wavelength_str
+	wavelength := state_split[2] + state_split[1]
+	//fmt.Println(wavelength)
+	wavelength_int, err := strconv.ParseInt(wavelength, 16, 32)
+	if err != nil {
+		fmt.Println("wavelength_int_1")
+	}
+
+	return int(wavelength_int)
 }
 
 func input_wl_validator(input string) int {
@@ -129,16 +130,31 @@ func main() {
 			label_status.SetText("False Wavelength")
 			return
 		}
-		wavelength_to_go, err := strconv.ParseFloat(data, 8)
+		wavelength_float, err := strconv.ParseFloat(data, 8)
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		wavelength_float *= 10
+		wavelength_to_go := int(wavelength_float)
+		current_wl := convert_state_to_wavelength(read_state())
+		if wavelength_to_go == current_wl {
+			return
+		}
+
 		label_status.SetText("In Process")
-		wavelength_to_go *= 10
-		go_to(int(wavelength_to_go))
-		current_wl := read_state()
-		current_wl = convert_state_to_wavelength(data)
-		label_current_wl.SetText(current_wl)
+		go_to(wavelength_to_go)
+
+		for current_wl != wavelength_to_go {
+			current_wl = convert_state_to_wavelength(read_state())
+			if current_wl == 0 {
+				continue
+			}
+			current_wl_str := strconv.Itoa(current_wl)
+			current_wl_str = current_wl_str[:3] + string('.') + string(current_wl_str[3])
+			fmt.Println("compare", current_wl, wavelength_to_go)
+			label_current_wl.SetText(current_wl_str)
+		}
 		label_status.SetText("Is Ok")
 
 	})
@@ -146,14 +162,15 @@ func main() {
 	btn_go_to_wl.Resize(fyne.NewSize(100, 40))
 
 	btn_read_state := widget.NewButton("Get", func() {
-		data := read_state()
-		data = convert_state_to_wavelength(data)
-		label_current_wl.SetText(data)
+		data := convert_state_to_wavelength(read_state())
+		s2 := strconv.Itoa(data)
+		s2 = s2[:3] + string('.') + string(s2[3])
+		label_current_wl.SetText(s2)
 	})
 	btn_read_state.Move(fyne.NewPos(160, 120))
 	btn_read_state.Resize(fyne.NewSize(100, 40))
 
-	label_go_from_wl := widget.NewLabel("Go From:")
+	label_go_from_wl := widget.NewLabel("Go From (nm):")
 	label_go_from_wl.Move(fyne.NewPos(40, 180))
 	label_go_from_wl.Resize(fyne.NewSize(60, 20))
 
@@ -161,7 +178,7 @@ func main() {
 	entry_go_from_wl.Move(fyne.NewPos(160, 180))
 	entry_go_from_wl.Resize(fyne.NewSize(100, 40))
 
-	label_go_to_wl := widget.NewLabel("Go To:")
+	label_go_to_wl := widget.NewLabel("Go To (nm):")
 	label_go_to_wl.Move(fyne.NewPos(40, 240))
 	label_go_to_wl.Resize(fyne.NewSize(60, 20))
 
@@ -189,7 +206,7 @@ func main() {
 		label_status.SetText("Is Ok")
 	})
 
-	label_delay := widget.NewLabel("Step Delay")
+	label_delay := widget.NewLabel("Step Delay (s)")
 	label_delay.Move(fyne.NewPos(40, 300))
 	label_delay.Resize(fyne.NewSize(60, 20))
 
